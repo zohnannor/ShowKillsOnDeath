@@ -1,5 +1,7 @@
-﻿using System.Security.Permissions;
+﻿using System;
+using System.Security.Permissions;
 using BepInEx;
+using Menu;
 using Menu.Remix.MixedUI;
 using UnityEngine;
 
@@ -13,7 +15,7 @@ namespace ShowKillsOnDeath;
 public class ShowKillsOnDeathMain : BaseUnityPlugin {
     public const string PLUGIN_GUID = "zohnannor.showkillsondeath";
     public const string PLUGIN_NAME = "Show Kills On Death";
-    public const string PLUGIN_VERSION = "1.0.0";
+    public const string PLUGIN_VERSION = "1.1.0";
 
     private bool initDone = false;
     public static ShowKillsOnDeathOptions Options;
@@ -24,6 +26,8 @@ public class ShowKillsOnDeathMain : BaseUnityPlugin {
 
     public void OnDisable() {
         On.RainWorld.OnModsInit -= OnModsInit;
+        On.Menu.SleepAndDeathScreen.GetDataFromGame -= SleepAndDeathScreen_GetDataFromGame;
+        On.Menu.PlayerResultBox.SymbolAndLabel.GrafUpdate -= SymbolAndLabel_GrafUpdate;
     }
 
     private void OnModsInit(On.RainWorld.orig_OnModsInit orig, RainWorld self) {
@@ -36,6 +40,7 @@ public class ShowKillsOnDeathMain : BaseUnityPlugin {
         MachineConnector.SetRegisteredOI(PLUGIN_GUID, Options);
 
         On.Menu.SleepAndDeathScreen.GetDataFromGame += SleepAndDeathScreen_GetDataFromGame;
+        On.Menu.PlayerResultBox.SymbolAndLabel.GrafUpdate += SymbolAndLabel_GrafUpdate;
 
         Logger.LogDebug($"{PLUGIN_NAME} v{PLUGIN_VERSION} loaded");
         initDone = true;
@@ -43,8 +48,8 @@ public class ShowKillsOnDeathMain : BaseUnityPlugin {
 
     private void SleepAndDeathScreen_GetDataFromGame(
         On.Menu.SleepAndDeathScreen.orig_GetDataFromGame orig,
-        Menu.SleepAndDeathScreen self,
-        Menu.KarmaLadderScreen.SleepDeathScreenDataPackage package
+        SleepAndDeathScreen self,
+        KarmaLadderScreen.SleepDeathScreenDataPackage package
     ) {
         orig(self, package);
 
@@ -55,7 +60,7 @@ public class ShowKillsOnDeathMain : BaseUnityPlugin {
                 && package.sessionRecord.kills.Count > 0
         ) {
             if (self.killsDisplay == null && self.pages.Count > 0) {
-                self.killsDisplay = new Menu.SleepScreenKills(
+                self.killsDisplay = new SleepScreenKills(
                     self,
                     self.pages[0],
                     new Vector2(self.LeftHandButtonsPosXAdd, 728f),
@@ -64,6 +69,26 @@ public class ShowKillsOnDeathMain : BaseUnityPlugin {
                 self.pages[0].subObjects.Add(self.killsDisplay);
                 self.killsDisplay.started = true;
             }
+        }
+    }
+
+    private void SymbolAndLabel_GrafUpdate(
+        On.Menu.PlayerResultBox.SymbolAndLabel.orig_GrafUpdate orig,
+        PlayerResultBox.SymbolAndLabel self,
+        float timeStacker
+    ) {
+        orig(self, timeStacker);
+        if (
+            self.owner is SleepScreenKills
+                && self.menu is SleepAndDeathScreen screen
+                && screen.IsAnyDeath
+                && self.symbol?.symbolSprite != null
+        ) {
+            self.symbol.symbolSprite.color = Color.Lerp(
+                Menu.Menu.MenuRGB(Menu.Menu.MenuColors.MediumGrey),
+                Color.red,
+                0.5f - 0.5f * Mathf.Sin((timeStacker + Time.time * 40f) / 30f * (float)Math.PI * 2f)
+            );
         }
     }
 }
@@ -84,7 +109,9 @@ public class ShowKillsOnDeathOptions : OptionInterface {
 
         mainTab = new OpTab(this, "Main");
         Tabs = [mainTab];
-        _enabledCheckbox = new OpCheckBox(Enabled, 5f, 527f) { description = description };
+        _enabledCheckbox = new OpCheckBox(Enabled, 5f, 527f) {
+            description = description
+        };
 
         mainTab.AddItems([
             _enabledCheckbox,
